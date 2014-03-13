@@ -31,7 +31,7 @@ function doinstall() {
 # timohalbesma@gmail.com
     osascript -e 'set volume without output muted'\" >> $OFF_FILE"
 
-    # Chmod the ON and OFF scripts to +x
+    # Chmod the ON and OFF scripts to +x to make then executable.
     if [-e $ON_FILE ]; then
         sudo chmod +x $ON_FILE
         sudo chmod +x $OFF_FILE
