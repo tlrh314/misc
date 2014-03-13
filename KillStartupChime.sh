@@ -1,9 +1,9 @@
-#! /bin/bash
+#!/bin/bash
 #kill the annoying startup chime' by Timo Halbesma, March 27 2012
 # timohalbesma@gmail.com
 
-ON_FILE="~/Desktop/mute-on.sh"
-OFF_FILE="~/Desktop/mute-off.sh"
+ON_FILE="/Library/Scripts/mute-on.sh"
+OFF_FILE="/Library/Scripts/mute-off.sh"
 NOW=$(date +"%B %d, %Y")
 
 function remove() {
@@ -19,20 +19,20 @@ function remove() {
 function doinstall() {
     # Remove currect script if one exists
     remove
-    # Create the ON and OFF scripts
 
-    sudo sh -c "echo \"#! /bin/bash
+# Create the ON and OFF scripts
+    sudo sh -c "echo \"#!/bin/bash
 # Kill the annoying tartup chime by Timo Halbesma, $NOW
 # timohalbesma@gmail.com
     osascript -e 'set volume with output muted'\" >> $ON_FILE"
 
-        sudo sh -c "echo \"#! /bin/bash
+    sudo sh -c "echo \"#!/bin/bash
 # Kill the annoying tartup chime by Timo Halbesma, $NOW
 # timohalbesma@gmail.com
     osascript -e 'set volume without output muted'\" >> $OFF_FILE"
 
     # Chmod the ON and OFF scripts to +x to make then executable.
-    if [-e $ON_FILE ]; then
+    if [ -e $ON_FILE ]; then
         sudo chmod +x $ON_FILE
         sudo chmod +x $OFF_FILE
     else
