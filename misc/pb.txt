@@ -1,0 +1,133 @@
+zoo NN
+youthful JJ
+sweet-faced JJ
+Bay-front JJ
+threshhold NN
+Mechanized VBN JJ
+perfectability NN
+Hemorrhage NNP
+Hausman NNP
+Larsson NNP
+whittled VBN
+interregnum NN
+painting NN VBG
+Insilco NNP
+Petaluma NNP
+bouquets NNS
+Lamborghini NNP
+demo NN
+curiosity NN
+Wirtz NNP
+OIL NNP NN
+waffling VBG JJ NN
+Refuses VBZ
+coronary JJ
+expedite VB
+hue NN
+gagged VBN VBD
+non-democratic JJ
+KLUC NNP
+Angers NNP
+Barbecued JJ
+quarrels NNS VBZ
+outfielder NN
+long-lived JJ
+Oran NNP
+jowly JJ
+Volz NNP
+Phils NNPS
+unfocused JJ
+proclamation NN
+unshelled VBN
+Accor NNP
+Loran NNP
+Tektronix NNP
+erecting VBG
+Bergman NNP
+Picop NNP
+Proverbs NNS
+Japanese-South NNP
+Semmes NNP
+LS NNP
+Simulator NNP
+Ich FW
+wearin VBG
+fiscal-fourth JJ
+long-view JJ
+Nyunt NNP
+misdemeanor NN
+Anthology NNP
+whole JJ NN RP
+Regalia NNP
+Overturf NNP
+billion-dollar JJ
+Attermann NNP
+Spinelli NNP
+Finsbury NNP
+Thyroid NN
+Dissect VB
+firecrackers NNS
+neo-classicism NN
+Decanting VBG
+Need VB NNP MD NN VBP
+western JJ
+childrens NNS
+Talmud NNP
+greet VB VBP
+Schoeppner NNP
+l'Ange NNP
+S.K. NNP
+slacking VBG
+recently-filed JJ
+irised VBN
+Needham NNP
+cortex NN
+Nipponese JJ
+Christmas-tree JJ
+prison NN VB
+midnight NN RB
+monopolies NNS
+Merill NNP
+deafening VBG JJ
+Consequences NNS
+Bendix\/King NNP
+dropped VBD VBN
+statist JJ
+Subgroups NNS
+liveliest JJS
+tattoo NN
+all-round JJ
+Photograph NN NNP
+pestering VBG
+Sasebo NNP
+snuffboxes NNS
+property-tax JJ
+Suliman NNP
+faulted VBN VBD
+Thanksgiving NNP
+Jacob NNP
+abnormality NN
+shit NN
+Haementeria FW
+cabin-crew NNS
+supposedly RB
+contrarians NNS
+entanglement NN
+gross-income NN
+whole-house JJ
+disappeared VBD VBN
+Musique NNP
+Giannini NNP
+Funston NNP
+Belth NNP
+reacquainted VBN
+hot-line NN
+anthem NN
+portability NN
+contents NNS
+contentions NNS
+lithe JJ
+utopianism NN
+baseballight NN
+Ten-year-old NNP JJ
+eromonga FW
