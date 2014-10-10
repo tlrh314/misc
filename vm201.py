@@ -10,14 +10,91 @@
 
 import sys
 import socket
-# import struct
+import struct
 # import time
 
 # http://txt.arboreus.com/2013/03/13/pretty-print-tables-in-python.html
 from tabulate import tabulate
 
 
-class Channel():
+# https://stackoverflow.com/questions/2184181/decoding-tcp-packets-using-python
+class TCPPacketHandler(object):
+    def __init__(self, commands):
+        self._stream = ''
+        self.commands = commands
+
+    def feed(self, buffer):
+        self._stream += buffer
+
+    # https://stackoverflow.com/questions/16822967/need-
+    # assistance-in-calculating-checksum
+    def calculate_checksum(self, s):
+        '''
+        Two-complement of the sum of all previous bytes in the packet.
+
+        @param s: string of bytes; len(s) = number of bytes.
+        @return: chechsum one byte stored in a string.
+        '''
+
+        return struct.pack('1B', (-(sum(ord(c) for c in s) % 256) & 0xFF))
+
+    def checksum_is_valid(self, packet):
+        ''' The last byte is ETX; secondlast byte is the checksum'''
+
+        return packet[-2] == self.calculate_checksum(packet[:-2])
+
+    def decode(self, packet):
+        '''
+        Decode a TCP packet to obtain CMD and data_x
+
+        @param packet: string containing the bytes; TCP packet received.
+        @return: list of integer values of the bytes. If checksum fails: None.
+        '''
+
+        cmd_byte = packet[2]
+        length = ord(packet[1])
+
+        try:
+            print 'Received', [key for key in self.commands if
+                               self.commands[key] == cmd_byte][0]
+        except KeyError, e:
+            print 'Error: TCPPacketHandler.decode, key not found in ' +\
+                  'commands dict!\n', e
+        if not self.checksum_is_valid(packet):
+            print 'Error: in TCPPacketHandler.decode(); invalid checksum!'
+            sys.exit()
+
+        if len(packet) != length:
+            print 'Error: expected: {0} bytes in packet; got: {1} bytes.'\
+                .format(length, len(packet))
+            sys.exit()
+
+        all_bytes_as_integers = list()
+        for byte in packet:
+            print byte.split()
+            all_bytes_as_integers.append(ord(byte))
+
+        return all_bytes_as_integers
+
+    def encode(self, cmd, data_x=None):
+        '''
+        Encode a TCP packet given a cmd
+        NB this function should be expanded to include channels
+
+        @param cmd: CMD_FULL_NAME, as given in 'commands' dict.
+        @param data_x: optional data bytes.
+        @ return string containing the bytes; TCP packet ready to transmit.
+        '''
+        stx = self.commands['STX']
+        length = struct.pack('1B', self.commands['LEN_'+cmd])
+        cmd_byte = self.commands[cmd]
+        checksum = self.calculate_checksum(stx + length + cmd_byte)
+        etx = self.commands['ETX']
+
+        return stx + length + cmd_byte + checksum + etx
+
+
+class Channel(object):
     def __init__(self):
         self.name = None
         self.status = None
@@ -31,19 +108,18 @@ class Channel():
         return [self.name, self.status, self.timer]
 
 
-class VM201RelayCard():
+class VM201RelayCard(object):
     def __init__(self, host, port=9760, username=None, password=None):
         self.host = host
         self.port = port
         self.username = username
         self.password = password
+
+        # Socket to communicatie over with the vm201 firmware.
         self.socket = None
-        self.channels = dict()
 
-        for i in range(1, 10):
-            self.channels[i] = Channel()
-
-        self.commands = {'TX': '\x02',
+        # Pre-defined commands stated in the protocol.
+        self.commands = {'STX': '\x02',
                          'ETX': '\x03',
                          'CMD_AUTH': 'A',
                          'LEN_CMD_AUTH': 5,
@@ -79,17 +155,14 @@ class VM201RelayCard():
                          'LEN_CMD_TMR_TOGGLE': 6
                          }
 
-    def convert_and_check_response(self, t, packet_length):
-        if len(t) != packet_length:
-            print 'Error: expected: {0} bytes in packet; got: {1} bytes.'\
-                .format(packet_length, len(t))
-            sys.exit()
+        # Relay channels (8 output; 1 input)
+        self.channels = dict()
 
-        all_bytes_as_integers = list()
-        for byte in t:
-            all_bytes_as_integers.append(ord(byte))
+        for i in range(1, 10):
+            self.channels[i] = Channel()
 
-        return all_bytes_as_integers
+        # TCP packet handler to decode and encode packets.
+        self.tcp_handler = TCPPacketHandler(self.commands)
 
     def connect(self):
         '''
@@ -133,18 +206,10 @@ class VM201RelayCard():
                 .format('connect_to_vm201')
             sys.exit()
 
-        response = self.convert_and_check_response(t, packet_length)
+        response = self.tcp_handler.decode(t)
+        # check response for CMD_LOGGED_IN: protocol 1a completed.
+        # check response for CMD_AUTH: follow protocol 1b.
 
-        # Succesfully logged in: <STX><5><CMD_LOGGED_IN><CHECKSUM><ETX>
-        if response[2] == ord(self.commands['CMD_LOGGED_IN']):
-            print 'Received CMD_LOGGED_IN'
-        # Authentication needed: <STX><5><CMD_AUTH><CHECKSUM><ETX>
-        elif response[2] == ord(self.commands['CMD_AUTH']):
-            print 'Received CMD_AUTH'
-            print 'To implement!'
-        else:
-            print 'Error:Received strange command from the server'
-            sys.exit()
 
     def disconnect(self):
         print "Disconnecting from the server"
@@ -169,20 +234,19 @@ class VM201RelayCard():
                     .format('receive_names_of_channels')
                 sys.exit()
 
-            response = self.convert_and_check_response(t, packet_length)
-            if response[2] == ord(self.commands['CMD_NAME']):
-                print 'Received CMD_NAME'
-                name = ''
-                for char in response[4:20]:
-                    # There appears to be buggy behaviour in the VM201 firmware.
-                    # The channel names might have seemingly random chars added.
-                    lowercase = (chr(char) >= 'a' and chr(char) <= 'z')
-                    uppercase = (chr(char) >= 'A' and chr(char) <= 'Z')
-                    # digit = (chr(char) >= 0 and chr(char) <= '9')
-                    # space = (chr(char) == 32)
-                    if uppercase or lowercase:
-                        name += chr(char)
-                self.channels[i].name = name
+            response = self.tcp_handler.decode(t)
+
+            name = ''
+            for char in response[4:20]:
+                # There appears to be buggy behaviour in the VM201 firmware.
+                # The channel names might have seemingly random chars added.
+                lowercase = (chr(char) >= 'a' and chr(char) <= 'z')
+                uppercase = (chr(char) >= 'A' and chr(char) <= 'Z')
+                # digit = (chr(char) >= 0 and chr(char) <= '9')
+                # space = (chr(char) == 32)
+                if uppercase or lowercase:
+                    name += chr(char)
+            self.channels[i].name = name
 
     def receive_status_of_channels(self):
         '''
@@ -201,12 +265,11 @@ class VM201RelayCard():
                 .format('receive_status_of_channels')
             sys.exit()
 
-        response = self.convert_and_check_response(t, packet_length)
-        if response[2] == ord(self.commands['CMD_STATUS']):
-            print 'Received CMD_STATUS'
-            output_string = bin(response[3])
-            timer_string = bin(response[4])
-            input_status = response[5]
+        response = self.tcp_handler.decode(t)
+
+        output_string = bin(response[3])
+        timer_string = bin(response[4])
+        input_status = response[5]
 
         # The string is now channel 8...1, but we want 1..8
         output_string = output_string[::-1]
@@ -226,10 +289,22 @@ class VM201RelayCard():
         for i in range(1, 10):
             table.append(self.channels[i].as_list())
 
-        table.append(['', '', ''])
+        # table.append(['', '', ''])
         state = '\n' + str(tabulate(table, header, "rst")) + '\n'
 
         return state
+
+
+    def send_status_request(self):
+        '''
+        Expected by the server
+        <STX><5><CMD_STATUS_REQ><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode('CMD_STATUS_REQ')
+        print self.tcp_handler.decode(packet)
+
+        self.socket.send(packet)
 
     # Checksum function in Pascal (Delphi ?)
     # function VM201Checksum(Data: array of Byte; Size: Integer): Byte;
@@ -269,6 +344,9 @@ def main(host, port=9760, username=None, password=None):
     VM201.receive_names_of_channels()
     VM201.receive_status_of_channels()
     print VM201
+    VM201.send_status_request()
+    VM201.receive_names_of_channels()
+    VM201.receive_status_of_channels()
     VM201.disconnect()
 
 
