@@ -1,3 +1,14 @@
+'''
+VM201RelayCard class.
+
+Software representation of the VM201 Ethernet Relay Card.
+
+Author: Timo Halbesma
+Date: October 11th, 2014
+Version: 2.0: Read TCP responses; send TCP packet to login and request status.
+'''
+
+
 from sys import exit
 from socket import socket, AF_INET, SOCK_STREAM, gaierror, error, gethostbyname
 
@@ -64,6 +75,18 @@ class VM201RelayCard(object):
         # TCP packet handler to decode and encode packets.
         self.tcp_handler = TCPPacketHandler()
 
+    def __str__(self):
+        header = ['Name', 'Output', 'Timer']
+        table = list()
+
+        for i in range(1, 10):
+            table.append(self.channels[i].as_list())
+
+        # table.append(['', '', ''])
+        state = '\n' + str(tabulate(table, header, "rst")) + '\n'
+
+        return state
+
     def lookup(self, cmd_byte):
         ''' Lookup key in self.commands dict given its value cmd_byte '''
 
@@ -75,43 +98,8 @@ class VM201RelayCard(object):
                 .format(cmd_byte) + ' in VM201.commands dict!\n', e
             return None
 
-    def login(self):
-        '''
-        Expected client answer to received CMD_AUTH::
-        <STX><14><CMD_USERNAME><char1 of username>...<char9 of username><CHECKSUM><ETX>
-        <STX><14><CMD_PASSWORD><char1 of password>...<char9 of password><CHECKSUM><ETX>
-
-        Expected server response:
-        invalid -> <STX><5><CMD_ACCESS_DENIED><CHECKSUM><ETX>
-                -> <STX><5><CMD_CLOSED><CHECKSUM><ETX>
-        succes -> <STX><5><CMD_LOGGED_IN><CHECKSUM><ETX>
-        '''
-
-        packet = self.tcp_handler.encode(self, 'CMD_USERNAME', self.username)
-        self.socket.send(packet)
-
-        packet = self.tcp_handler.encode(self, 'CMD_PASSWORD', self.password)
-        self.socket.send(packet)
-
-        # 'LEN_CMD_LOGGED_IN' = 'LEN_CMD_ACCESS_DENIED'  = 'LEN_CMD_CLOSED'
-        packet_length = self.commands['LEN_CMD_LOGGED_IN']
-        packet = self.socket.recv(packet_length)
-        response = self.tcp_handler.decode(self, packet)
-        login_status = self.lookup(chr(response[2]))
-
-        if login_status == 'CMD_LOGGED_IN':
-            print 'Authentication succes.'
-        elif login_status == 'CMD_ACCESS_DENIED':
-            print 'Authentication failure.'
-            packet = self.socket.recv(packet_length)
-            response = self.tcp_handler.decode(self, packet)
-            exit()
-
     def connect(self):
-        '''
-        Connect to vm201 via TCP protocol
-
-        '''
+        ''' Connect to vm201 via TCP protocol '''
 
         # 'LEN_CMD_AUTH' is equal to 'LEN_CMD_LOGGED_IN'.
         packet_length = self.commands['LEN_CMD_AUTH']
@@ -160,23 +148,37 @@ class VM201RelayCard(object):
             print 'Error: unexpected server return {0}'.format(login_status)
             exit()
 
-    def disconnect(self):
+    def login(self):
         '''
-        Expected by the server
-        <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        Expected client answer to received CMD_AUTH::
+        <STX><14><CMD_USERNAME><char1 of username>...<char9 of username><CHECKSUM><ETX>
+        <STX><14><CMD_PASSWORD><char1 of password>...<char9 of password><CHECKSUM><ETX>
+
+        Expected server response:
+        invalid -> <STX><5><CMD_ACCESS_DENIED><CHECKSUM><ETX>
+                -> <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        succes -> <STX><5><CMD_LOGGED_IN><CHECKSUM><ETX>
         '''
 
-        packet = self.tcp_handler.encode(self, 'CMD_CLOSED')
+        packet = self.tcp_handler.encode(self, 'CMD_USERNAME', self.username)
         self.socket.send(packet)
 
-        length = self.commands['LEN_CMD_CLOSED']
-        packet = self.socket.recv(length)
-        self.tcp_handler.decode(self, packet)
+        packet = self.tcp_handler.encode(self, 'CMD_PASSWORD', self.password)
+        self.socket.send(packet)
 
-        self.socket.close()
-        print 'Socket Closed.'
+        # 'LEN_CMD_LOGGED_IN' = 'LEN_CMD_ACCESS_DENIED'  = 'LEN_CMD_CLOSED'
+        packet_length = self.commands['LEN_CMD_LOGGED_IN']
+        packet = self.socket.recv(packet_length)
+        response = self.tcp_handler.decode(self, packet)
+        login_status = self.lookup(chr(response[2]))
 
-        exit()
+        if login_status == 'CMD_LOGGED_IN':
+            print 'Authentication succes.'
+        elif login_status == 'CMD_ACCESS_DENIED':
+            print 'Authentication failure.'
+            packet = self.socket.recv(packet_length)
+            response = self.tcp_handler.decode(self, packet)
+            exit()
 
     def receive_names_of_channels(self):
         '''
@@ -245,19 +247,6 @@ class VM201RelayCard(object):
         self.channels[9].status = input_status
         self.channels[9].timer = '-'
 
-    def __str__(self):
-        header = ['Name', 'Output', 'Timer']
-        table = list()
-
-        for i in range(1, 10):
-            table.append(self.channels[i].as_list())
-
-        # table.append(['', '', ''])
-        state = '\n' + str(tabulate(table, header, "rst")) + '\n'
-
-        return state
-
-
     def send_status_request(self):
         '''
         Expected by the server
@@ -273,6 +262,23 @@ class VM201RelayCard(object):
         self.receive_status_of_channels()
         print self
 
+    def disconnect(self):
+        '''
+        Expected by the server
+        <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode(self, 'CMD_CLOSED')
+        self.socket.send(packet)
+
+        length = self.commands['LEN_CMD_CLOSED']
+        packet = self.socket.recv(length)
+        self.tcp_handler.decode(self, packet)
+
+        self.socket.close()
+        print 'Socket Closed.'
+
+        exit()
 
 
 # http://www.gossamer-threads.com/lists/python/python/134741

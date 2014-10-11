@@ -1,5 +1,16 @@
+'''
+TCPPacketHandler class.
+
+TCP packet handler to decode and encode packets; calculate and verify checksum.
+
+Author: Timo Halbesma
+Date: October 11th, 2014
+Version: 2.0: Implemented decode; added encode.
+'''
+
 import sys
 import struct
+
 
 # https://stackoverflow.com/questions/2184181/decoding-tcp-packets-using-python
 # NB in the end only inspired by this solution. Hardly any code remains.

@@ -1,3 +1,16 @@
+'''
+Channel class.
+
+The VM201 Ethernet Relay Card has 8 relays (Channels) and 1 input Channel.
+Each channel has a name, status (1 on / 0 off) and timer (1 on / 0 off).
+Only the input Channel does not have a timer.
+
+Author: Timo Halbesma
+Date: October 11th, 2014
+Version: 1.0: implemented
+'''
+
+
 class Channel(object):
     def __init__(self):
         self.name = None
