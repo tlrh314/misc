@@ -1,0 +1,287 @@
+from sys import exit
+from socket import socket, AF_INET, SOCK_STREAM, gaierror, error, gethostbyname
+
+# http://txt.arboreus.com/2013/03/13/pretty-print-tables-in-python.html
+from tabulate import tabulate
+
+from Channel import Channel
+from TCPPacketHandler import TCPPacketHandler
+
+
+class VM201RelayCard(object):
+    def __init__(self, host, port=9760, username=None, password=None):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+
+        # Socket to communicatie over with the vm201 firmware.
+        self.socket = None
+
+        # Pre-defined commands stated in the protocol.
+        self.commands = {'STX': '\x02',
+                         'ETX': '\x03',
+                         'CMD_AUTH': 'A',
+                         'LEN_CMD_AUTH': 5,
+                         'CMD_USERNAME': 'U',
+                         'LEN_CMD_USERNAME': 14,
+                         'CMD_PASSWORD': 'W',
+                         'LEN_CMD_PASSWORD': 14,
+                         'CMD_LOGGED_IN': 'L',
+                         'LEN_CMD_LOGGED_IN': 5,
+                         'CMD_ACCESS_DENIED': 'X',
+                         'LEN_CMD_ACCESS_DENIED': 5,
+                         'CMD_CLOSED': 'C',
+                         'LEN_CMD_CLOSED': 5,
+                         'CMD_NAME': 'N',
+                         'LEN_CMD_NAME': 22,
+                         'CMD_STATUS_REQ': 'R',
+                         'LEN_CMD_STATUS_REQ': 5,
+                         'CMD_STATUS': 'S',
+                         'LEN_CMD_STATUS': 8,
+                         'CMD_ON': 'O',
+                         'LEN_CMD_ON': 6,
+                         'CMD_OFF': 'F',
+                         'LEN_CMD_OFF': 6,
+                         'CMD_TOGGLE': 'T',
+                         'LEN_CMD_TOGGLE': 6,
+                         'CMD_PULSE': 'P',
+                         'LEN_CMD_PULSE': 8,
+                         'CMD_UPDATE': 'V',
+                         'LEN_CMD_UPDATE': 6,
+                         'CMD_TMR_ENA': 'E',
+                         'LEN_CMD_TMR_DIS': 6,
+                         'CMD_TMR_TOGGLE': 'G',
+                         'LEN_CMD_TMR_TOGGLE': 6
+                         }
+
+        # Relay channels (8 output; 1 input)
+        self.channels = dict()
+
+        for i in range(1, 10):
+            self.channels[i] = Channel()
+
+        # TCP packet handler to decode and encode packets.
+        self.tcp_handler = TCPPacketHandler()
+
+    def lookup(self, cmd_byte):
+        ''' Lookup key in self.commands dict given its value cmd_byte '''
+
+        try:
+            return [key for key in self.commands if
+                    self.commands[key] == cmd_byte][0]
+        except KeyError, e:
+            print 'Error: value \'{0}\' not found'\
+                .format(cmd_byte) + ' in VM201.commands dict!\n', e
+            return None
+
+    def login(self):
+        '''
+        Expected client answer to received CMD_AUTH::
+        <STX><14><CMD_USERNAME><char1 of username>...<char9 of username><CHECKSUM><ETX>
+        <STX><14><CMD_PASSWORD><char1 of password>...<char9 of password><CHECKSUM><ETX>
+
+        Expected server response:
+        invalid -> <STX><5><CMD_ACCESS_DENIED><CHECKSUM><ETX>
+                -> <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        succes -> <STX><5><CMD_LOGGED_IN><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode(self, 'CMD_USERNAME', self.username)
+        self.socket.send(packet)
+
+        packet = self.tcp_handler.encode(self, 'CMD_PASSWORD', self.password)
+        self.socket.send(packet)
+
+        # 'LEN_CMD_LOGGED_IN' = 'LEN_CMD_ACCESS_DENIED'  = 'LEN_CMD_CLOSED'
+        packet_length = self.commands['LEN_CMD_LOGGED_IN']
+        packet = self.socket.recv(packet_length)
+        response = self.tcp_handler.decode(self, packet)
+        login_status = self.lookup(chr(response[2]))
+
+        if login_status == 'CMD_LOGGED_IN':
+            print 'Authentication succes.'
+        elif login_status == 'CMD_ACCESS_DENIED':
+            print 'Authentication failure.'
+            packet = self.socket.recv(packet_length)
+            response = self.tcp_handler.decode(self, packet)
+            exit()
+
+    def connect(self):
+        '''
+        Connect to vm201 via TCP protocol
+
+        '''
+
+        # 'LEN_CMD_AUTH' is equal to 'LEN_CMD_LOGGED_IN'.
+        packet_length = self.commands['LEN_CMD_AUTH']
+
+        # create an INET, STREAMing socket
+        try:
+            self.socket = socket(AF_INET, SOCK_STREAM)
+        except socket.error:
+            print 'Failed to create socket'
+            exit()
+        else:
+            print 'Socket Created.'
+
+        try:
+            remote_ip = gethostbyname(self.host)
+            self.socket.connect((self.host, self.port))
+        except gaierror:
+            print 'Error in {0}: Hostname could not be resolved.'\
+                .format('connect_to_vm201')
+            exit()
+        except error, e:
+            print 'Error in {0}: {1}'\
+                .format('connect_to_vm201', e)
+            print 'Perhaps hostname or port incorrect? Please double check.'
+            exit()
+        else:
+            print 'Socket Connected to ' + self.host + ' on ip ' + remote_ip
+
+        try:
+            packet = self.socket.recv(packet_length)
+        except Exception, e:
+            # I have no idea whatsoever what could go wrong =)...
+            raise
+            print 'Error: something went wrong in recv function in {0}!'\
+                .format('connect_to_vm201')
+            exit()
+
+        response = self.tcp_handler.decode(self, packet)
+        login_status = self.lookup(chr(response[2]))
+        if login_status == 'CMD_LOGGED_IN':
+            # No auth required; no further steps needed.
+            pass
+        elif login_status == 'CMD_AUTH':
+            self.login()
+        else:
+            print 'Error: unexpected server return {0}'.format(login_status)
+            exit()
+
+    def disconnect(self):
+        '''
+        Expected by the server
+        <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode(self, 'CMD_CLOSED')
+        self.socket.send(packet)
+
+        length = self.commands['LEN_CMD_CLOSED']
+        packet = self.socket.recv(length)
+        self.tcp_handler.decode(self, packet)
+
+        self.socket.close()
+        print 'Socket Closed.'
+
+        exit()
+
+    def receive_names_of_channels(self):
+        '''
+        Expected server response:
+        <STX><22><CMD_NAME><Channelnr><char1 name>...<char16 of name><CHECKSUM><ETX>
+        '''
+
+        packet_length = self.commands['LEN_CMD_NAME']
+
+        # First 8 output channels, then 1 input channel.
+        for i in range(1, 10):
+            try:
+                packet = self.socket.recv(packet_length)
+            except Exception, e:
+                # I have no idea whatsoever what could go wrong =)...
+                raise
+                print 'Error: something went wrong in recv function in {0}!'\
+                    .format('receive_names_of_channels')
+                exit()
+
+            response = self.tcp_handler.decode(self, packet)
+
+            name = ''
+            for char in response[4:20]:
+                # There appears to be buggy behaviour in the VM201 firmware.
+                # The channel names might have seemingly random chars added.
+                lowercase = (chr(char) >= 'a' and chr(char) <= 'z')
+                uppercase = (chr(char) >= 'A' and chr(char) <= 'Z')
+                # digit = (chr(char) >= 0 and chr(char) <= '9')
+                # space = (chr(char) == 32)
+                if uppercase or lowercase:
+                    name += chr(char)
+            self.channels[i].name = name
+
+    def receive_status_of_channels(self):
+        '''
+        Expected server response:
+        <STX><8><CMD_STATUS><output status><output timer status><input status><CHECKSUM><ETX>
+        '''
+
+        packet_length = self.commands['LEN_CMD_STATUS']
+
+        try:
+            packet = self.socket.recv(packet_length)
+        except Exception, e:
+            # I have no idea whatsoever what could go wrong =)...
+            raise
+            print 'Error: something went wrong in recv function in {0}!'\
+                .format('receive_status_of_channels')
+            exit()
+
+        response = self.tcp_handler.decode(self, packet)
+
+        output_string = bin(response[3])
+        timer_string = bin(response[4])
+        input_status = response[5]
+
+        # The string is now channel 8...1, but we want 1...8
+        output_string = output_string[::-1]
+        timer_string = timer_string[::-1]
+
+        for i in range(8):
+            self.channels[i+1].status = output_string[i]
+            self.channels[i+1].timer = timer_string[i]
+
+        self.channels[9].status = input_status
+        self.channels[9].timer = '-'
+
+    def __str__(self):
+        header = ['Name', 'Output', 'Timer']
+        table = list()
+
+        for i in range(1, 10):
+            table.append(self.channels[i].as_list())
+
+        # table.append(['', '', ''])
+        state = '\n' + str(tabulate(table, header, "rst")) + '\n'
+
+        return state
+
+
+    def send_status_request(self):
+        '''
+        Expected by the server
+        <STX><5><CMD_STATUS_REQ><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode(self, 'CMD_STATUS_REQ')
+
+        self.socket.send(packet)
+
+    def status(self):
+        self.receive_names_of_channels()
+        self.receive_status_of_channels()
+        print self
+
+
+
+# http://www.gossamer-threads.com/lists/python/python/134741
+def bin(i):
+    ''' Return str of binary byte representation of given int i'''
+    s = ''
+    while i:
+        s = (i & 1 and '1' or '0') + s
+        i >>= 1
+    while len(s) < 8:
+        s = '0' + s
+    return s or '0'

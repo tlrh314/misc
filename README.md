@@ -16,7 +16,7 @@ Some directories should be backupped periodically. This script runs in an hourly
 
 **vm201.py**
 
-Script to read status of channels in a VM201 ethernet relay card.
+Script to communicate with VM201 ethernet relay card.
 http://www.vellemanprojects.eu/products/view/?country=be&lang=en&id=407510
 http://www.velleman.eu/downloads/0/infosheets/datasheet_vm201-uk.pdf
 http://forum.velleman.eu/viewtopic.php?f=37&t=8598&p=33039&hilit=VM201+protocol
