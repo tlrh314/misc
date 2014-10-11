@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vm201.py
+# communicate_with_vm201.py
 #
 # Timo Halbesma
 #
@@ -9,6 +9,7 @@
 # Version 2.0: Read TCP responses; send TCP packet to login and request status.
 
 from sys import argv, exit
+from time import sleep
 
 from VM201RelayCard import VM201RelayCard
 
@@ -18,8 +19,12 @@ def main(host, port=9760, username=None, password=None):
 
     VM201.connect()
     VM201.status()
-    VM201.send_status_request()
-    VM201.status()
+
+    for i in range(3):
+        VM201.send_status_request()
+        VM201.status()
+        sleep(1)
+
     VM201.disconnect()
 
 

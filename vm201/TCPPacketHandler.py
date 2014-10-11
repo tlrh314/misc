@@ -46,7 +46,8 @@ class TCPPacketHandler(object):
         cmd_byte = packet[2]
         length = ord(packet[1])
 
-        print 'Received', vm201.lookup(cmd_byte)
+        vm201.display.add_tcp_msg('Received {0}'
+                                  .format(vm201.lookup(cmd_byte)))
 
         if not self.checksum_is_valid(packet):
             print 'Error: in TCPPacketHandler.decode(); invalid checksum!'
@@ -82,7 +83,7 @@ class TCPPacketHandler(object):
         checksum = self.calculate_checksum(stx + length + cmd_byte + data_x)
         etx = vm201.commands['ETX']
 
-        print 'Sending', cmd
+        vm201.display.add_tcp_msg('Sending {0}'.format(cmd))
 
         # If data_x is not given, adding data_x = '' does not alter packet.
         return stx + length + cmd_byte + data_x + checksum + etx

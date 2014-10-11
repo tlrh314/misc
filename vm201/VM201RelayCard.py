@@ -17,6 +17,7 @@ from tabulate import tabulate
 
 from Channel import Channel
 from TCPPacketHandler import TCPPacketHandler
+from Printer import Printer
 
 
 class VM201RelayCard(object):
@@ -75,6 +76,9 @@ class VM201RelayCard(object):
         # TCP packet handler to decode and encode packets.
         self.tcp_handler = TCPPacketHandler()
 
+        # Custum print handler
+        self.display = Printer()
+
     def __str__(self):
         header = ['Name', 'Output', 'Timer']
         table = list()
@@ -94,8 +98,9 @@ class VM201RelayCard(object):
             return [key for key in self.commands if
                     self.commands[key] == cmd_byte][0]
         except KeyError, e:
-            print 'Error: value \'{0}\' not found'\
-                .format(cmd_byte) + ' in VM201.commands dict!\n', e
+            msg = 'Error: value \'{0}\' not found'\
+                  .format(cmd_byte) + ' in VM201.commands dict!\n', e
+            self.display.add_tcp_msg(msg)
             return None
 
     def connect(self):
@@ -108,33 +113,38 @@ class VM201RelayCard(object):
         try:
             self.socket = socket(AF_INET, SOCK_STREAM)
         except socket.error:
-            print 'Failed to create socket'
+            msg = 'Failed to create socket'
+            self.display.add_tcp_msg(msg)
             exit()
         else:
-            print 'Socket Created.'
+            self.display.add_tcp_msg('Socket Created.')
 
         try:
             remote_ip = gethostbyname(self.host)
             self.socket.connect((self.host, self.port))
         except gaierror:
-            print 'Error in {0}: Hostname could not be resolved.'\
+            msg = 'Error in {0}: Hostname could not be resolved.'\
                 .format('connect_to_vm201')
+            self.display.add_tcp_msg(msg)
             exit()
         except error, e:
-            print 'Error in {0}: {1}'\
+            msg = 'Error in {0}: {1}'\
                 .format('connect_to_vm201', e)
-            print 'Perhaps hostname or port incorrect? Please double check.'
+            msg += '\nPerhaps hostname or port incorrect? Please double check.'
+            self.display.add_tcp_msg(msg)
             exit()
         else:
-            print 'Socket Connected to ' + self.host + ' on ip ' + remote_ip
+            self.display.add_tcp_msg(
+                'Socket Connected to ' + self.host + ' on ip ' + remote_ip)
 
         try:
             packet = self.socket.recv(packet_length)
         except Exception, e:
             # I have no idea whatsoever what could go wrong =)...
             raise
-            print 'Error: something went wrong in recv function in {0}!'\
-                .format('connect_to_vm201')
+            msg = 'Error: something went wrong in recv function in {0}!'\
+                  .format('connect_to_vm201')
+            self.display.add_tcp_msg(msg)
             exit()
 
         response = self.tcp_handler.decode(self, packet)
@@ -145,7 +155,8 @@ class VM201RelayCard(object):
         elif login_status == 'CMD_AUTH':
             self.login()
         else:
-            print 'Error: unexpected server return {0}'.format(login_status)
+            msg = 'Error: unexpected server return {0}'.format(login_status)
+            self.display.add_tcp_msg(msg)
             exit()
 
     def login(self):
@@ -173,9 +184,9 @@ class VM201RelayCard(object):
         login_status = self.lookup(chr(response[2]))
 
         if login_status == 'CMD_LOGGED_IN':
-            print 'Authentication succes.'
+            self.display.add_tcp_msg('Authentication succeeded.')
         elif login_status == 'CMD_ACCESS_DENIED':
-            print 'Authentication failure.'
+            self.display.add_tcp_msg('Authentication failed.')
             packet = self.socket.recv(packet_length)
             response = self.tcp_handler.decode(self, packet)
             exit()
@@ -195,8 +206,9 @@ class VM201RelayCard(object):
             except Exception, e:
                 # I have no idea whatsoever what could go wrong =)...
                 raise
-                print 'Error: something went wrong in recv function in {0}!'\
-                    .format('receive_names_of_channels')
+                msg = 'Error: something went wrong in recv function in {0}!'\
+                      .format('receive_names_of_channels')
+                self.display.add_tcp_msg(msg)
                 exit()
 
             response = self.tcp_handler.decode(self, packet)
@@ -226,8 +238,9 @@ class VM201RelayCard(object):
         except Exception, e:
             # I have no idea whatsoever what could go wrong =)...
             raise
-            print 'Error: something went wrong in recv function in {0}!'\
-                .format('receive_status_of_channels')
+            msg = 'Error: something went wrong in recv function in {0}!'\
+                  .format('receive_status_of_channels')
+            self.display.add_tcp_msg(msg)
             exit()
 
         response = self.tcp_handler.decode(self, packet)
@@ -260,7 +273,7 @@ class VM201RelayCard(object):
     def status(self):
         self.receive_names_of_channels()
         self.receive_status_of_channels()
-        print self
+        self.display.update_state(str(self))
 
     def disconnect(self):
         '''
@@ -276,7 +289,7 @@ class VM201RelayCard(object):
         self.tcp_handler.decode(self, packet)
 
         self.socket.close()
-        print 'Socket Closed.'
+        self.display.add_tcp_msg('Socket Closed.')
 
         exit()
 
