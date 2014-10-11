@@ -18,13 +18,10 @@ from tabulate import tabulate
 
 
 # https://stackoverflow.com/questions/2184181/decoding-tcp-packets-using-python
+# NB in the end only inspired by this solution. Hardly any code remains.
 class TCPPacketHandler(object):
-    def __init__(self, commands):
-        self._stream = ''
-        self.commands = commands
-
-    def feed(self, buffer):
-        self._stream += buffer
+    def __init__(self):
+        pass
 
     # https://stackoverflow.com/questions/16822967/need-
     # assistance-in-calculating-checksum
@@ -43,7 +40,7 @@ class TCPPacketHandler(object):
 
         return packet[-2] == self.calculate_checksum(packet[:-2])
 
-    def decode(self, packet):
+    def decode(self, vm201, packet):
         '''
         Decode a TCP packet to obtain CMD and data_x
 
@@ -54,12 +51,8 @@ class TCPPacketHandler(object):
         cmd_byte = packet[2]
         length = ord(packet[1])
 
-        try:
-            print 'Received', [key for key in self.commands if
-                               self.commands[key] == cmd_byte][0]
-        except KeyError, e:
-            print 'Error: TCPPacketHandler.decode, key not found in ' +\
-                  'commands dict!\n', e
+        print 'Received', vm201.lookup(cmd_byte)
+
         if not self.checksum_is_valid(packet):
             print 'Error: in TCPPacketHandler.decode(); invalid checksum!'
             sys.exit()
@@ -69,29 +62,35 @@ class TCPPacketHandler(object):
                 .format(length, len(packet))
             sys.exit()
 
-        all_bytes_as_integers = list()
-        for byte in packet:
-            print byte.split()
-            all_bytes_as_integers.append(ord(byte))
+        return list(struct.unpack('B'*length, packet))
 
-        return all_bytes_as_integers
-
-    def encode(self, cmd, data_x=None):
+    def encode(self, vm201, cmd, data_x=''):
         '''
-        Encode a TCP packet given a cmd
-        NB this function should be expanded to include channels
+        Encode a TCP packet given a cmd.
+        Generic packets: <STX><LEN><CMD><data_1>...<data_n><CHECKSUM><ETX>
 
-        @param cmd: CMD_FULL_NAME, as given in 'commands' dict.
+        @param cmd: CMD_FULL_NAME, as given in 'VM201.commands' dict.
         @param data_x: optional data bytes.
         @ return string containing the bytes; TCP packet ready to transmit.
         '''
-        stx = self.commands['STX']
-        length = struct.pack('1B', self.commands['LEN_'+cmd])
-        cmd_byte = self.commands[cmd]
-        checksum = self.calculate_checksum(stx + length + cmd_byte)
-        etx = self.commands['ETX']
 
-        return stx + length + cmd_byte + checksum + etx
+        stx = vm201.commands['STX']
+        length = struct.pack('1B', vm201.commands['LEN_'+cmd])
+        cmd_byte = vm201.commands[cmd]
+
+        # bool('') -> False. Encode called without data_x -> skip this block.
+        if data_x:
+            # data_x is padded with zeros until it has length 9.
+            data_x += (9 - len(data_x)) * '\x00'
+
+        # If data_x is not given, adding data_x = '' does not alter checksum.
+        checksum = self.calculate_checksum(stx + length + cmd_byte + data_x)
+        etx = vm201.commands['ETX']
+
+        print 'Sending', cmd
+
+        # If data_x is not given, adding data_x = '' does not alter packet.
+        return stx + length + cmd_byte + data_x + checksum + etx
 
 
 class Channel(object):
@@ -162,7 +161,51 @@ class VM201RelayCard(object):
             self.channels[i] = Channel()
 
         # TCP packet handler to decode and encode packets.
-        self.tcp_handler = TCPPacketHandler(self.commands)
+        self.tcp_handler = TCPPacketHandler()
+
+    def lookup(self, cmd_byte):
+        ''' Lookup key in self.commands dict given its value cmd_byte '''
+
+        try:
+            return [key for key in self.commands if
+                    self.commands[key] == cmd_byte][0]
+        except KeyError, e:
+            print 'Error: value \'{0}\' not found'\
+                .format(cmd_byte) + ' in VM201.commands dict!\n', e
+            return None
+
+    def login(self):
+        '''
+        Expected client answer to received CMD_AUTH::
+        <STX><14><CMD_USERNAME><char1 of username>...<char9 of username><CHECKSUM><ETX>
+        <STX><14><CMD_PASSWORD><char1 of password>...<char9 of password><CHECKSUM><ETX>
+
+        Expected server response:
+        invalid -> <STX><5><CMD_ACCESS_DENIED><CHECKSUM><ETX>
+                -> <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        succes -> <STX><5><CMD_LOGGED_IN><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode(self, 'CMD_USERNAME', self.username)
+        self.socket.send(packet)
+
+        packet = self.tcp_handler.encode(self, 'CMD_PASSWORD', self.password)
+        self.socket.send(packet)
+
+        # 'LEN_CMD_LOGGED_IN' = 'LEN_CMD_ACCESS_DENIED'  = 'LEN_CMD_CLOSED'
+        packet_length = self.commands['LEN_CMD_LOGGED_IN']
+        packet = self.socket.recv(packet_length)
+        response = self.tcp_handler.decode(self, packet)
+        login_status = self.lookup(chr(response[2]))
+
+        if login_status == 'CMD_LOGGED_IN':
+            print 'Authentication succes.'
+        elif login_status == 'CMD_ACCESS_DENIED':
+            print 'Authentication failure.'
+            packet = self.socket.recv(packet_length)
+            response = self.tcp_handler.decode(self, packet)
+            sys.exit()
+
 
     def connect(self):
         '''
@@ -180,7 +223,7 @@ class VM201RelayCard(object):
             print 'Failed to create socket'
             sys.exit()
         else:
-            print 'Socket Created'
+            print 'Socket Created.'
 
         try:
             remote_ip = socket.gethostbyname(self.host)
@@ -198,7 +241,7 @@ class VM201RelayCard(object):
             print 'Socket Connected to ' + self.host + ' on ip ' + remote_ip
 
         try:
-            t = self.socket.recv(packet_length)
+            packet = self.socket.recv(packet_length)
         except Exception, e:
             # I have no idea whatsoever what could go wrong =)...
             raise
@@ -206,14 +249,34 @@ class VM201RelayCard(object):
                 .format('connect_to_vm201')
             sys.exit()
 
-        response = self.tcp_handler.decode(t)
-        # check response for CMD_LOGGED_IN: protocol 1a completed.
-        # check response for CMD_AUTH: follow protocol 1b.
-
+        response = self.tcp_handler.decode(self, packet)
+        login_status = self.lookup(chr(response[2]))
+        if login_status == 'CMD_LOGGED_IN':
+            # No auth required; no further steps needed.
+            pass
+        elif login_status == 'CMD_AUTH':
+            self.login()
+        else:
+            print 'Error: unexpected server return {0}'.format(login_status)
+            sys.exit()
 
     def disconnect(self):
-        print "Disconnecting from the server"
+        '''
+        Expected by the server
+        <STX><5><CMD_CLOSED><CHECKSUM><ETX>
+        '''
+
+        packet = self.tcp_handler.encode(self, 'CMD_CLOSED')
+        self.socket.send(packet)
+
+        length = self.commands['LEN_CMD_CLOSED']
+        packet = self.socket.recv(length)
+        self.tcp_handler.decode(self, packet)
+
         self.socket.close()
+        print 'Socket Closed.'
+
+        sys.exit()
 
     def receive_names_of_channels(self):
         '''
@@ -226,7 +289,7 @@ class VM201RelayCard(object):
         # First 8 output channels, then 1 input channel.
         for i in range(1, 10):
             try:
-                t = self.socket.recv(packet_length)
+                packet = self.socket.recv(packet_length)
             except Exception, e:
                 # I have no idea whatsoever what could go wrong =)...
                 raise
@@ -234,7 +297,7 @@ class VM201RelayCard(object):
                     .format('receive_names_of_channels')
                 sys.exit()
 
-            response = self.tcp_handler.decode(t)
+            response = self.tcp_handler.decode(self, packet)
 
             name = ''
             for char in response[4:20]:
@@ -257,7 +320,7 @@ class VM201RelayCard(object):
         packet_length = self.commands['LEN_CMD_STATUS']
 
         try:
-            t = self.socket.recv(packet_length)
+            packet = self.socket.recv(packet_length)
         except Exception, e:
             # I have no idea whatsoever what could go wrong =)...
             raise
@@ -265,13 +328,13 @@ class VM201RelayCard(object):
                 .format('receive_status_of_channels')
             sys.exit()
 
-        response = self.tcp_handler.decode(t)
+        response = self.tcp_handler.decode(self, packet)
 
         output_string = bin(response[3])
         timer_string = bin(response[4])
         input_status = response[5]
 
-        # The string is now channel 8...1, but we want 1..8
+        # The string is now channel 8...1, but we want 1...8
         output_string = output_string[::-1]
         timer_string = timer_string[::-1]
 
@@ -301,28 +364,15 @@ class VM201RelayCard(object):
         <STX><5><CMD_STATUS_REQ><CHECKSUM><ETX>
         '''
 
-        packet = self.tcp_handler.encode('CMD_STATUS_REQ')
-        print self.tcp_handler.decode(packet)
+        packet = self.tcp_handler.encode(self, 'CMD_STATUS_REQ')
 
         self.socket.send(packet)
 
-    # Checksum function in Pascal (Delphi ?)
-    # function VM201Checksum(Data: array of Byte; Size: Integer): Byte;
-    # var
-    #  i: Integer;
-    #    n: Byte;
-    #    begin
-    #      n := 0;
-    #
-    #        for i:=0 to Size-1 do
-    #                n := n + Data[i];
-    #
-    #                  Result := (1 + (not ($FF and n)));
-    #                  end;
+    def status(self):
+        self.receive_names_of_channels()
+        self.receive_status_of_channels()
+        print self
 
-    def send_command_to_vm201():
-        print "Not implemented yet"
-        return None
 
 
 # http://www.gossamer-threads.com/lists/python/python/134741
@@ -341,12 +391,9 @@ def main(host, port=9760, username=None, password=None):
     VM201 = VM201RelayCard(host, port, username, password)
 
     VM201.connect()
-    VM201.receive_names_of_channels()
-    VM201.receive_status_of_channels()
-    print VM201
+    VM201.status()
     VM201.send_status_request()
-    VM201.receive_names_of_channels()
-    VM201.receive_status_of_channels()
+    VM201.status()
     VM201.disconnect()
 
 
