@@ -50,17 +50,20 @@ class TCPPacketHandler(object):
                                   .format(vm201.lookup(cmd_byte)))
 
         if not self.checksum_is_valid(packet):
-            print 'Error: in TCPPacketHandler.decode(); invalid checksum!'
-            sys.exit()
+            msg = 'Error: in TCPPacketHandler.decode(); invalid checksum!'
+            vm201.display.add_tcp_msg(msg)
+            vm201.display.add_tcp_msg(packet.split())
+            # sys.exit()
 
         if len(packet) != length:
-            print 'Error: expected: {0} bytes in packet; got: {1} bytes.'\
-                .format(length, len(packet))
-            sys.exit()
+            msg = 'Error: expected: {0} bytes in packet; got: {1} bytes.'\
+                  .format(length, len(packet))
+            vm201.display.add_tcp_msg(msg)
+            # sys.exit()
 
         return list(struct.unpack('B'*length, packet))
 
-    def encode(self, vm201, cmd, data_x=''):
+    def encode(self, vm201, cmd, data_x='', channel_id=''):
         '''
         Encode a TCP packet given a cmd.
         Generic packets: <STX><LEN><CMD><data_1>...<data_n><CHECKSUM><ETX>
@@ -75,7 +78,7 @@ class TCPPacketHandler(object):
         cmd_byte = vm201.commands[cmd]
 
         # bool('') -> False. Encode called without data_x -> skip this block.
-        if data_x:
+        if cmd == 'CMD_USERNAME' or cmd == 'CMD_PASSWORD':
             # data_x is padded with zeros until it has length 9.
             data_x += (9 - len(data_x)) * '\x00'
 
@@ -83,7 +86,7 @@ class TCPPacketHandler(object):
         checksum = self.calculate_checksum(stx + length + cmd_byte + data_x)
         etx = vm201.commands['ETX']
 
-        vm201.display.add_tcp_msg('Sending {0}'.format(cmd))
+        vm201.display.add_tcp_msg('Sending {0} {1}'.format(cmd, channel_id))
 
         # If data_x is not given, adding data_x = '' does not alter packet.
         return stx + length + cmd_byte + data_x + checksum + etx

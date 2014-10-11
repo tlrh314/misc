@@ -11,6 +11,9 @@ Version: 2.0: Read TCP responses; send TCP packet to login and request status.
 
 from sys import exit
 from socket import socket, AF_INET, SOCK_STREAM, gaierror, error, gethostbyname
+from socket import timeout
+from struct import pack
+
 
 # http://txt.arboreus.com/2013/03/13/pretty-print-tables-in-python.html
 from tabulate import tabulate
@@ -62,6 +65,8 @@ class VM201RelayCard(object):
                          'CMD_UPDATE': 'V',
                          'LEN_CMD_UPDATE': 6,
                          'CMD_TMR_ENA': 'E',
+                         'LEN_CMD_TMR_ENA': 6,
+                         'CMD_TMR_DIS': 'D',
                          'LEN_CMD_TMR_DIS': 6,
                          'CMD_TMR_TOGGLE': 'G',
                          'LEN_CMD_TMR_TOGGLE': 6
@@ -69,6 +74,8 @@ class VM201RelayCard(object):
 
         # Relay channels (8 output; 1 input)
         self.channels = dict()
+        self.channel_string = str()
+        self.timer_string = str()
 
         for i in range(1, 10):
             self.channels[i] = Channel()
@@ -107,7 +114,7 @@ class VM201RelayCard(object):
         ''' Connect to vm201 via TCP protocol '''
 
         # 'LEN_CMD_AUTH' is equal to 'LEN_CMD_LOGGED_IN'.
-        packet_length = self.commands['LEN_CMD_AUTH']
+        length = self.commands['LEN_CMD_AUTH']
 
         # create an INET, STREAMing socket
         try:
@@ -138,7 +145,7 @@ class VM201RelayCard(object):
                 'Socket Connected to ' + self.host + ' on ip ' + remote_ip)
 
         try:
-            packet = self.socket.recv(packet_length)
+            packet = self.socket.recv(length)
         except Exception, e:
             # I have no idea whatsoever what could go wrong =)...
             raise
@@ -171,6 +178,11 @@ class VM201RelayCard(object):
         succes -> <STX><5><CMD_LOGGED_IN><CHECKSUM><ETX>
         '''
 
+        if self.username is None or self.password is None:
+            msg = 'Error: no username and/or password specified!'
+            self.display.add_tcp_msg(msg)
+            exit()
+
         packet = self.tcp_handler.encode(self, 'CMD_USERNAME', self.username)
         self.socket.send(packet)
 
@@ -178,8 +190,8 @@ class VM201RelayCard(object):
         self.socket.send(packet)
 
         # 'LEN_CMD_LOGGED_IN' = 'LEN_CMD_ACCESS_DENIED'  = 'LEN_CMD_CLOSED'
-        packet_length = self.commands['LEN_CMD_LOGGED_IN']
-        packet = self.socket.recv(packet_length)
+        length = self.commands['LEN_CMD_LOGGED_IN']
+        packet = self.socket.recv(length)
         response = self.tcp_handler.decode(self, packet)
         login_status = self.lookup(chr(response[2]))
 
@@ -187,7 +199,7 @@ class VM201RelayCard(object):
             self.display.add_tcp_msg('Authentication succeeded.')
         elif login_status == 'CMD_ACCESS_DENIED':
             self.display.add_tcp_msg('Authentication failed.')
-            packet = self.socket.recv(packet_length)
+            packet = self.socket.recv(length)
             response = self.tcp_handler.decode(self, packet)
             exit()
 
@@ -197,12 +209,12 @@ class VM201RelayCard(object):
         <STX><22><CMD_NAME><Channelnr><char1 name>...<char16 of name><CHECKSUM><ETX>
         '''
 
-        packet_length = self.commands['LEN_CMD_NAME']
+        length = self.commands['LEN_CMD_NAME']
 
         # First 8 output channels, then 1 input channel.
         for i in range(1, 10):
             try:
-                packet = self.socket.recv(packet_length)
+                packet = self.socket.recv(length)
             except Exception, e:
                 # I have no idea whatsoever what could go wrong =)...
                 raise
@@ -231,10 +243,10 @@ class VM201RelayCard(object):
         <STX><8><CMD_STATUS><output status><output timer status><input status><CHECKSUM><ETX>
         '''
 
-        packet_length = self.commands['LEN_CMD_STATUS']
+        length = self.commands['LEN_CMD_STATUS']
 
         try:
-            packet = self.socket.recv(packet_length)
+            packet = self.socket.recv(length)
         except Exception, e:
             # I have no idea whatsoever what could go wrong =)...
             raise
@@ -245,19 +257,19 @@ class VM201RelayCard(object):
 
         response = self.tcp_handler.decode(self, packet)
 
-        output_string = bin(response[3])
-        timer_string = bin(response[4])
-        input_status = response[5]
+        self.channel_string = bin(response[3])
+        self.timer_string = bin(response[4])
+        self.input_status = response[5]
 
         # The string is now channel 8...1, but we want 1...8
-        output_string = output_string[::-1]
-        timer_string = timer_string[::-1]
+        channel_string = self.channel_string[::-1]
+        timer_string = self.timer_string[::-1]
 
         for i in range(8):
-            self.channels[i+1].status = output_string[i]
+            self.channels[i+1].status = channel_string[i]
             self.channels[i+1].timer = timer_string[i]
 
-        self.channels[9].status = input_status
+        self.channels[9].status = self.input_status
         self.channels[9].timer = '-'
 
     def send_status_request(self):
@@ -267,13 +279,85 @@ class VM201RelayCard(object):
         '''
 
         packet = self.tcp_handler.encode(self, 'CMD_STATUS_REQ')
-
         self.socket.send(packet)
 
     def status(self):
         self.receive_names_of_channels()
         self.receive_status_of_channels()
         self.display.update_state(str(self))
+
+    def update_string(self, s, channel_id):
+        '''
+        NB channel bits 7...0 = channels 8...1
+        calculate new channel/input string where only channel_id is flipped!
+
+        @param s: str, either channel or input string
+        @param channel_id: int; which channel should be changed?
+        @return str; newly generated channel/input string.
+        '''
+
+        new_bit = ''
+        if s[-channel_id] == '0':
+            new_bit = '1'
+        elif s[-channel_id] == '1':
+            new_bit = '0'
+
+        return s[: -channel_id] + new_bit + s[len(s) - channel_id + 1: len(s)]
+
+    def string_of_change(self, channel_id):
+        ''' Return zero for all channels but channel_id '''
+        byte_string = '0' * (8 - channel_id) + '1' + '0' * (channel_id - 1)
+        return (pack('B', int(byte_string, 2)))
+
+    def on_off_toggle(self, cmd, channel_id):
+        '''
+        Expected by the server
+        <STX><6><CMD_...><channels><CHECKSUM><ETX>
+            channel bits 7...0 = channels 8...1 ; bit=0 no change ;
+            bit=1 switch channel
+        @param cmd: works both with the output status and the timer.
+        '''
+
+        change = self.string_of_change(channel_id)
+        packet = self.tcp_handler.encode(self, cmd, change, channel_id)
+        self.socket.send(packet)
+
+        # If and only if the status has changed, a CMD_STATUS is send by the
+        # server. But this we do not know, so we set a timeout and wait...
+        self.socket.settimeout(3.0)
+        try:
+            self.display.add_tcp_msg('Waiting for CMD_STATUS')
+            self.receive_status_of_channels()
+            # packet = self.socket.recv(8)
+        except timeout, e:
+            self.display.add_tcp_msg('Timeout -> channel unchanged')
+        except Exception, e:
+            self.display.add_tcp_msg('Error: unknown')
+            raise e
+        # else:
+        #    self.display.add_tcp_msg(packet.split())
+
+    def pulse(self, channel_id):
+        '''
+        Expected by the server
+        <STX><8><CMD_PULSE><channels><pulsetime><units><CHECKSUM><ETX>
+            channel bits 7...0 = channels 8...1 ; bit=0 no change ;
+            bit=1 pulse channel
+            pulse time: 1...99
+            units: 's'= seconds; 'm' = minutes; 'h' = hours
+        '''
+
+        return None
+
+    def timer_on_off_toggle(self, cmd, channel_id):
+        '''
+        Expected by the server
+        <STX><6><CMD_TMR_ENA><channels><CHECKSUM><ETX>
+            channel bits 7...0 = channels 8...1 ; bit=0 no change ;
+            bit=1 switch channel ON
+        '''
+
+        return None
 
     def disconnect(self):
         '''

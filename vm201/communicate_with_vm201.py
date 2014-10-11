@@ -20,12 +20,37 @@ def main(host, port=9760, username=None, password=None):
     VM201.connect()
     VM201.status()
 
-    for i in range(3):
-        VM201.send_status_request()
-        VM201.status()
-        sleep(1)
+    user_command = ''
+    while user_command != 'QUIT':
+        user_command = raw_input('> ')
+        if user_command == 'HELP':
+            VM201.display.add_tcp_msg('HELP: not available yet')
+        elif user_command == 'CMD_STATUS':
+            VM201.send_status_request()
+            VM201.status()
+        elif user_command == 'QUIT':
+            VM201.disconnect()
+        else:
 
-    VM201.disconnect()
+            try:
+                choice, argument = user_command.split()
+            except ValueError, e:
+                VM201.display.add_tcp_msg('Error: incorrect command or usage')
+            else:
+                try:
+                    argument = int(argument)
+                    if argument < 1 or argument > 8:
+                        raise ValueError
+                except ValueError, e:
+                    VM201.display.add_tcp_msg('Error: incorrect usage')
+
+                else:
+                    if choice in ['CMD_ON', 'CMD_OFF', 'CMD_TOGGLE',
+                                  'CMD_TMR_ENA', 'CMD_TMR_DIS',
+                                  'CMD_TMR_TOGGLE']:
+                        VM201.on_off_toggle(choice, argument)
+                        VM201.send_status_request()
+                        VM201.status()
 
 
 if __name__ == "__main__":
