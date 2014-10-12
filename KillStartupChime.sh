@@ -22,20 +22,12 @@ function doinstall() {
 
 # Create the ON and OFF scripts
     sudo sh -c "echo \"#!/bin/bash
-<<<<<<< HEAD
-# Kill the annoying tartup chime by Timo Halbesma, $NOW
-=======
 # Kill the annoying startup chime by Timo Halbesma. $NOW
->>>>>>> 31196c6db94f3b2a546d8e8724d509b11c348ae2
 # timohalbesma@gmail.com
     osascript -e 'set volume with output muted'\" >> $ON_FILE"
 
     sudo sh -c "echo \"#!/bin/bash
-<<<<<<< HEAD
-# Kill the annoying tartup chime by Timo Halbesma, $NOW
-=======
 # Kill the annoying startup chime by Timo Halbesma. $NOW
->>>>>>> 31196c6db94f3b2a546d8e8724d509b11c348ae2
 # timohalbesma@gmail.com
     osascript -e 'set volume without output muted'\" >> $OFF_FILE"
 
