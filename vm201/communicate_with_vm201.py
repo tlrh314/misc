@@ -51,6 +51,8 @@ def main(host, port=9760, username=None, password=None):
                         VM201.on_off_toggle(choice, argument)
                         VM201.send_status_request()
                         VM201.status()
+                    else:
+                        VM201.display.add_tcp_msg('Error: incorrect usage')
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ from Printer import Printer
 class VM201RelayCard(object):
     def __init__(self, host, port=9760, username=None, password=None):
         self.host = host
-        self.port = port
+        self.port = int(port)
         self.username = username
         self.password = password
 
