@@ -24,9 +24,9 @@ from Printer import Printer
 
 
 class VM201RelayCard(object):
-    def __init__(self, host, port=9760, username=None, password=None):
+    def __init__(self, host, port=9760, username=None, password=None,verbose=True):
         self.host = host
-        self.port = port
+        self.port = int(port)
         self.username = username
         self.password = password
 
@@ -84,7 +84,7 @@ class VM201RelayCard(object):
         self.tcp_handler = TCPPacketHandler()
 
         # Custum print handler
-        self.display = Printer()
+        self.display = Printer(verbose)
 
     def __str__(self):
         header = ['Name', 'Output', 'Timer']

@@ -3,8 +3,12 @@ from sys import stdout
 
 # issues: explicit locations. Should add parameters.
 class Printer(object):
-    def __init__(self):
+    def __init__(self, verbose=True):
         # self.row, self.col = 2, 1
+        self.verbose = verbose
+        if not verbose:
+            return
+
         self.state_row, self.state_col = 2, 1
         self.log_row, self.log_col = 2, 42
         self.help_row, self.help_col = 45, 1
@@ -41,6 +45,8 @@ class Printer(object):
     # -unix-in-python-and-go-lang/
     def clear(self):
         ''' Clear screen, return cursor to top left '''
+        if not self.verbose:
+            return
 
         stdout.write('\033[{0}A'.format(self.table_len))
         stdout.write('\033[0J')
@@ -48,6 +54,8 @@ class Printer(object):
 
     def add_tcp_msg(self, msg):
         # There is an off by one in the log when it renews after %
+        if not self.verbose:
+            return
         msg_position = 5 + self.msg_counter % int(self.help_row - 5)
         stdout.write('\033[{0};{1}H'.format(msg_position, self.log_col))
         stdout.write('\033[K')
@@ -60,6 +68,8 @@ class Printer(object):
         self.msg_counter += 1
 
     def update_state(self, table):
+        if not self.verbose:
+            return
         stdout.write('\033[4;1H')
         stdout.write(table)
         stdout.write('\033[54;1H')

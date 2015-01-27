@@ -14,8 +14,31 @@ from time import sleep
 from VM201RelayCard import VM201RelayCard
 
 
+def on_off(host, port=9760, username=None, password=None, cmd=''):
+    # Set verbose to False so no output is written to stdout.
+    VM201 = VM201RelayCard(host, port, username, password, False)
+    VM201.connect()
+    VM201.status()
+
+    if cmd.lower() == 'on':
+        VM201.on_off_toggle('CMD_ON', 1)
+        VM201.on_off_toggle('CMD_ON', 2)
+        VM201.on_off_toggle('CMD_ON', 3)
+    elif cmd.lower() == 'off':
+        VM201.on_off_toggle('CMD_OFF', 1)
+        VM201.on_off_toggle('CMD_OFF', 2)
+        VM201.on_off_toggle('CMD_OFF', 3)
+    else:
+        print "'{0}' is not a valid option".format(cmd)
+
+    VM201.send_status_request()
+    VM201.status()
+    VM201.disconnect()
+
+
 def main(host, port=9760, username=None, password=None):
-    VM201 = VM201RelayCard(host, port, username, password)
+    # Explicitly set verbose to True [this is the default value though]
+    VM201 = VM201RelayCard(host, port, username, password, True)
 
     VM201.connect()
     VM201.status()
@@ -72,3 +95,6 @@ if __name__ == "__main__":
     elif len(argv) == 5:
         # hostname, port and username+password given
         main(argv[1], int(argv[2]), argv[3], argv[4])
+    elif len(argv) == 6:
+        # hostname, port and username+password given and additional command
+        on_off(argv[1], int(argv[2]), argv[3], argv[4], argv[5])
